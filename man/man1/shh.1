@@ -1,0 +1,36 @@
+.\"     Author: John Heatherington
+.\"     
+.\"     Revision History
+.\"         March 31, 2023: Initial version
+
+.TH shh 1 2023-03-31 GNU SHH
+
+.SH NAME
+shh - Integrates SSH with password-store to reduce the console noise.
+
+.SH SYNOPSIS
+shh [-d SHH_PASS_DIR] [-h] COMMAND [OPTIONS ...] [ARGUMENT ...]
+
+.SH DESCRIPTION
+.B shh
+is a wrapper for any tool that uses 
+.BR ssh (1)
+and SSH keys. It automates the key decryption process by retrieving the passphrases from
+.BR pass (1).
+
+.SH OPTIONS
+.TP
+.BR \-d " SHH_PASS_DIR"
+Overrides the environment variable described below.
+.TP
+.BR \-h
+Displays the usage and available options.
+
+.SH ENVIRONMENT
+.TP
+.I SHH_PASS_DIR
+The path within the password store containing SSH key passphrases. Defaults to "SSH".
+
+.SH SEE ALSO
+.BR ssh (1),
+.BR pass (1).

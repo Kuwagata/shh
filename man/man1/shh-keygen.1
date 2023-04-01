@@ -1,0 +1,44 @@
+.\"     Author: John Heatherington
+.\"     
+.\"     Revision History
+.\"         March 31, 2023: Initial version
+
+.TH shh-keygen 1 2023-03-31 GNU SHH-KEYGEN
+
+.SH NAME
+shh-keygen - Wrapper around ssh-keygen, integrating it with password-store.
+
+.SH SYNOPSIS
+shh-keygen [OPTIONS ...] ARGS ...
+
+.SH DESCRIPTION
+.B shh-keygen
+is a wrapper around 
+.BR ssh-keygen (1)
+that automates the process of generating SSH keys with encryption passphrases. 
+This is accomplished by storing the passphrases in 
+.BR pass (1). 
+If the key already exists on the filesystem or the passphrase already exists in 
+the password store, then the user will be prompted to overwrite or re-use the
+pre-existing components.
+
+.SH OPTIONS
+See the options for 
+.BR ssh-keygen (1).
+
+.SH ENVIRONMENT
+.TP
+.BR SSH_PASS_DEBUG
+Set to 1 to enable debug messages.
+.TP
+.BR SHH_PASS_DIR
+The path within the password store containing SSH key passphrases. Defaults to "SSH".
+
+.SH NOTES
+While generating keys the passphrases will be visible to the system as 
+arguments to 
+.BR ssh-keygen (1).
+
+.SH SEE ALSO
+.BR ssh-keygen (1),
+.BR pass (1).

@@ -1,0 +1,212 @@
+#!/usr/bin/env bash
+set -o errexit
+set -o nounset
+set -o pipefail
+
+# Set this var to make `shh` look in a different password-store folder for
+# keyfile passwords. This allows for segmentation of environments.
+readonly pass_dir="${SHH_PASS_DIR:-SSH}"
+
+debug() {
+  if [[ -n ${SSH_PASS_DEBUG} ]] ; then
+    printf '\e[1;32m[%s]:\e[0m %s\n' "$(date +'%Y-%m-%dT%H:%M:%S%z')" "$*"
+  fi
+}
+
+error() {
+  printf '\e[31m[ERROR]\e[0m %s\n' "$*" >&2
+}
+
+warn() {
+  printf '\e[1;33m[%s]:\e[0m %s\n' "$(date +'%Y-%m-%dT%H:%M:%S%z')" "$*"
+}
+
+# Determines whether a passphrase corresponding to a ssh key filename exists in
+# the password store. Checks the underlying files rather than going through
+# `pass find`, since they use ANSI color codes and have no way to turn them off.
+pass_name_exists() {
+  local -r pass_name="$1"
+  local -r password_store="${PASSWORD_STORE_DIR:-"${HOME}/.password-store"}"
+  local -r gpg_path="${password_store}/${pass_dir}/${pass_name}.gpg"
+  debug "Looking for ${gpg_path} in pass."
+  [[ -e "${gpg_path}" ]] && return 0 || return 1
+}
+
+# Provides a prompt and accepts a caps-insensitive yes/no/y/n answer. Returns 0
+# for confirm, non-zero for deny.
+confirm() {
+  local -r prompt="$1"
+  while true ; do
+    read -rp "${prompt} (y/n) " response
+    case "${response}" in
+      [Yy]*) return 0 ;;
+      [Nn]*) return 1 ;;
+      * ) printf 'Please answer with one of: (y)es/(n)o' ;;
+    esac
+  done
+}
+
+main() {
+  local -a keygen_args=()
+
+  while (( OPTIND <= $# )) ; do
+    if getopts ':C:cf:lN:P:pqt:vyZ:' flag ; then
+      case "${flag}" in
+        q) keygen_args+=('-q') ;;
+        v) keygen_args+=('-v') ;;
+        N) new_passphrase_opt="${OPTARG}" ;;
+        P) old_passphrase_opt="${OPTARG}" ;;
+        c)
+          keygen_args+=('-c')
+          requires_existing_key=true
+          ;; 
+        l)
+          keygen_args+=('-l')
+          requires_existing_key=true
+          ;; 
+        p)
+          keygen_args+=('-p')
+          requires_existing_key=true
+          requires_new_password=true
+          ;;
+        y)
+          keygen_args+=('-y')
+          requires_existing_key=true
+          ;;
+        f)
+          keygen_args+=('-f' "${OPTARG}")
+          key_path_opt="${OPTARG}"
+          ;;
+        C)
+          keygen_args+=('-C' "${OPTARG}")
+          key_comment_opt="${OPTARG}"
+          ;;
+        t)
+          keygen_args+=('-t' "${OPTARG}")
+          key_type_opt="${OPTARG}"
+          ;;
+        Z) keygen_args+=('-Z' "${OPTARG}") ;;
+
+        \?)
+          warn 'ssh-pass-keygen is known to work with: cCflNPptyvZ'
+          warn 'May not function with: ADeimFHIKkLMnOQRrsUuVwYz'
+          keygen_args+=("-${OPTARG}")
+          ;;
+        :)  error "Option -${OPTARG} expects an argument."; exit 1 ;;
+        *)  error 'getopts returned something unexpected!'; exit 1 ;;
+      esac
+    else
+        # `getopts` stops when it encounters a positional parameter or '--', so
+        # we need to catch it here or the loop will miss everything after.
+        debug "Found positional parameter: ${!OPTIND}"
+        keygen_args+=("${!OPTIND}")
+        ((OPTIND++))
+    fi
+  done
+
+  # If no filename is provided, we have to resort to the default key names,
+  # based on key type. These have hyphens instead of underscores, so we have to
+  # convert to keep the mapping in `pass` consistent.
+  local -r key_type="${key_type_opt:-rsa}"
+  local -r key_path="${key_path_opt:-"${HOME}/.ssh/id_${key_type//-/_}"}"
+  local -r pass_name="${key_path##*/}"
+
+  # ssh-keygen doesn't care if we specify a comment all the time. It's easier.
+  if [[ -z "${key_comment_opt}" ]] ; then
+    keygen_args+=('-C' "$(whoami)@$(uname -n)-$(date -I)")
+  fi
+
+  if [[ ${requires_existing_key} == true ]] ; then
+    debug "Operation expects '${key_path}' to exist."
+    if [[ ! -e "${key_path}" ]] ; then
+      error "Cannot find the ssh key '${key_path}'"
+      exit 1
+    fi
+
+    # A pre-existing key is assumed to have a password
+    local pass
+    if [[ -z "${old_passphrase_opt}" ]] ; then
+      debug 'No passphrase supplied for key, checking the password store.'
+      if pass_name_exists "${pass_name}" ; then
+        if ! pass="$(pass show "${pass_dir}/${pass_name}")" ; then
+          error 'Error retrieving passphrase from password-store.'
+          exit 1
+        fi
+      else
+        error 'No passphrase supplied for the old key.'
+        exit 1
+      fi
+      debug 'Passphrase found.'
+    else
+      debug 'Using supplied passphrase.'
+      pass="${old_passphrase_opt}"
+    fi
+    keygen_args+=("-P" "${pass}")
+  else
+    debug "Operation will create or overwrite '${key_path}'."
+
+    if [[ -e "${key_path}" ]] ; then
+      if confirm "Overwrite '${key_path}'?" ; then
+        if confirm "Backup '${key_path}'?" ; then
+          mv -f "${key_path}"     "${key_path}.bak"
+          mv -f "${key_path}.pub" "${key_path}.pub.bak"
+        fi
+        rm -f "${key_path}"
+        rm -f "${key_path}.pub"
+      else
+        error "Cannot continue while '${key_path}' is present."
+        exit 1
+      fi
+    else
+      if [[ ! -d "$(dirname "${OPTARG}")" ]] ; then
+          error 'Directory to contain key does not exist.'
+          exit 1
+      fi
+    fi
+    
+    if pass_name_exists "${pass_name}" ; then
+      debug "Found an existing passphrase for ${pass_name} in pass."
+
+      # Someone may want to create a new key using a pre-existing password.
+      # This could be from an old key or it could be manually inserted prior
+      # to calling this script.
+      if confirm "Overwrite existing passphrase for ${pass_name}?" ; then
+        debug 'Passphrase will be replaced.'
+        requires_new_password=true
+      else
+        debug 'Passphrase will be reused.'
+        requires_new_password=false
+        local pass
+        if ! pass="$(pass show "${pass_dir}/${pass_name}")" ; then
+          error 'Error retrieving passphrase from password-store.'
+          exit 1
+        fi
+        keygen_args+=("-N" "${pass}")
+      fi
+    else
+      debug "Could not find a passphrase for ${pass_name} in pass."
+      requires_new_password=true
+    fi
+  fi
+
+  if [[ ${requires_new_password} == true ]] ; then
+    debug 'Operation requires a new password.'
+    if [[ -z ${new_passphrase_opt} ]] ; then
+      debug 'Generating a new password.'
+      # This is ripped right out of `pass`
+      read -r -n "${PASS_SSH_PASSPHRASE_LENGTH:-32}" new_pass < \
+        <(LC_ALL=C tr -dc "[:punct:][:alnum:]" < /dev/urandom)
+    else
+      debug 'Using supplied new passphrase.'
+      new_pass="${new_passphrase_opt}"
+    fi
+    printf '%s\n%s\n' "${new_pass}" "${new_pass}" \
+      | pass insert -f "${pass_dir}/${pass_name}" > /dev/null
+    keygen_args+=("-N" "${new_pass}")
+  fi
+
+  debug "Executing: ssh-keygen ${keygen_args[*]}"
+  ssh-keygen "${keygen_args[@]}"
+}
+ 
+main "$@"

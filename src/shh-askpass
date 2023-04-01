@@ -1,0 +1,100 @@
+#!/usr/bin/env bash
+set -o errexit
+set -o nounset
+set -o pipefail
+
+# Note: OpenSSH tools will consume stdout when running ASKPASS utilities, so
+# user-facing output is sent to stderr instead.
+
+pass_prompt_to_user() {
+  local prompt="$1"
+  local response=""
+
+  # OpenSSH also, as of version "9.1p1-3", sets SSH_ASKPASS_PROMPT to hint when
+  # a password dialog is used for insecure purposes, like yes/no confirmation.
+  # There is another value, "none", used in the context of U2f to remind the
+  # user to tap their device, but I have not tested that functionality yet.
+  if [[ "${SSH_ASKPASS_PROMPT:-""}" == 'confirm' ]] ; then
+    # Confirm is used for simple yes/no prompts and not passwords.
+    read -rp "${prompt}" response 1>&2
+    printf '%s\n' "${response}"
+  else
+    read -rsp "${prompt}" response 1>&2
+    printf '%s\n' "${response}"
+
+    # "read -p" strips away the newline, and "read -s" hides the input,
+    # so we need to add an extra newline here to make up for that.
+    printf '\n' 1>&2
+  fi
+  exit 0
+}
+
+key_path_from_password_prompt() {
+  local -r prompt="$1"
+
+  # Prompt begins with: "Enter passphrase for "
+  local key_path="${prompt:21}"
+
+  # Prompt ends with a ":"
+  key_path="${key_path%:*}"
+
+  # This handles ssh-add called with "-c"
+  if [[ ${key_path: -1} == ")" ]] ; then
+    key_path="${key_path%" (will confirm each use)"}"
+  fi
+
+  # For some reason the key path is surrounded by single quotes only when
+  # calling "ssh"
+  if [[ ${key_path: -1} == "'" ]] ; then
+    key_path="${key_path:1:-1}"
+  fi
+
+  printf '%s\n' "${key_path}"
+}
+
+main() {
+  local -r ssh_prompt="$1"
+
+  # Set this var to make `shh` look in a different password-store folder for
+  # keyfile passwords. This allows for segmentation of environments.
+  local -r pass_folder="${SHH_PASS_DIR:-SSH}"
+
+  case "${ssh_prompt}" in
+    # ssh (new host)
+    *fingerprint*)
+      # SSH doesn't set the hint in this case, which makes pass_prompt_to_user
+      # think it should silence text entry. This may be a bug in OpenSSH, but
+      # it's unlikely to change.
+      local response=""
+      read -rp "${ssh_prompt}" response 1>&2
+      printf '%s\n' "${response}"
+      ;;
+
+    # ssh-keygen
+    "Enter passphrase (empty for no passphrase):"*)
+      pass_prompt_to_user "${ssh_prompt}"
+      ;;
+
+    # ssh-keygen (confirmation)
+    "Enter same passphrase again:"*)
+      pass_prompt_to_user "${ssh_prompt}"
+      ;;
+
+    # ssh (with user and password)
+    *"'s password:"*)
+      pass_prompt_to_user "${ssh_prompt}"
+      ;;
+
+    # ssh (with user and SSH key)
+    "Enter passphrase for "*)
+      key_path=$(key_path_from_password_prompt "${ssh_prompt}")
+
+      # Simplest convention is to just use the key filename for store/lookup.
+      pass "${pass_folder}/${key_path##*/}" | head -n1
+      ;;
+
+    *) printf 'Unknown prompt:\n"%s"' "${ssh_prompt}" 1>&2; exit 1;;
+  esac
+}
+
+main "$@"

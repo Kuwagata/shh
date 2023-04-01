@@ -1,0 +1,53 @@
+#!/usr/bin/env bash
+set -o errexit
+set -o nounset
+set -o pipefail
+
+error() {
+  printf '\e[31m[ERROR]\e[0m %s\n' "$*" >&2
+}
+
+help() {
+  printf 'Usage: shh [ -h ] [ -d SHH_PASS_DIR ] command ...\n'
+  printf '  -h                    Displays the usage and available options.\n'
+  printf '  -d SHH_PASS_DIR       Set the folder in pass to look for keys\n'
+}
+
+main() {
+    SSH_ASKPASS="$(dirname "$0")/shh-askpass"
+    export SSH_ASKPASS
+    export SSH_ASKPASS_REQUIRE='force'
+
+    while getopts ":d:h" option; do
+      case "${option}" in
+        d)
+          export SHH_PASS_DIR="${OPTARG}"
+          ;;
+        h)
+          help
+          exit 0
+          ;;
+        \?)
+          error "Invalid option: -${OPTARG}"
+          exit 1
+          ;;
+        :)
+          error "Missing argument for option: -${OPTARG}"
+          exit 1
+          ;;
+        *)
+          error 'Unexpected value returned from getopts'
+          ;;
+      esac
+    done
+    shift $((OPTIND-1))
+
+    if (($# < 1)); then
+      help
+      exit 1
+    fi
+
+    "$@"
+}
+
+main "$@"
