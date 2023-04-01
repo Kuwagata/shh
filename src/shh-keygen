@@ -13,6 +13,28 @@ debug() {
   fi
 }
 
+censor_debug() {
+  if [[ -z ${SHH_DEBUG:-''} ]] ; then
+    return 0
+  fi
+
+  if [[ -n ${SHH_DEBUG_SHOW_PASS:-''} ]] ; then
+    printf '\e[1;32m[DEBUG]:\e[0m %s\n' "Executing: ssh-keygen $*"
+  else
+    local -a censored_args=()
+    for ((i=0; i < ${#keygen_args[@]}; i++)) do
+        case "${keygen_args[$i]}" in
+          -N|-O)
+            censored_args+=("${keygen_args[$i]}" '******')
+            ((i++))
+            ;;
+          *) censored_args+=("${keygen_args[$i]}") ;;
+        esac
+      done
+    printf '\e[1;32m[DEBUG]:\e[0m %s\n' "Executing: ssh-keygen ${censored_args[*]}"
+  fi
+}
+
 error() {
   printf '\e[31m[ERROR]\e[0m %s\n' "$*" >&2
 }
@@ -205,7 +227,7 @@ main() {
     keygen_args+=("-N" "${new_pass}")
   fi
 
-  debug "Executing: ssh-keygen ${keygen_args[*]}"
+  censor_debug "${keygen_args[@]}"
   ssh-keygen "${keygen_args[@]}"
 }
  
