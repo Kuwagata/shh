@@ -8,8 +8,8 @@ set -o pipefail
 readonly pass_dir="${SHH_PASS_DIR:-SSH}"
 
 debug() {
-  if [[ -n ${SHH_DEBUG} ]] ; then
-    printf '\e[1;32m[%s]:\e[0m %s\n' "$(date +'%Y-%m-%dT%H:%M:%S%z')" "$*"
+  if [[ -n ${SHH_DEBUG:-''} ]] ; then
+    printf '\e[1;32m[DEBUG]:\e[0m %s\n' "$*"
   fi
 }
 
