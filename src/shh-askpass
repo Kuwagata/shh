@@ -66,7 +66,10 @@ main() {
       # think it should silence text entry. This may be a bug in OpenSSH, but
       # it's unlikely to change.
       local response=""
-      read -rp "${ssh_prompt}" response 1>&2
+      # We have to specify the TTY, because git forks for SSH which doesn't play
+      # nicely with ASKPASS. The alternative is to pre-approve the fingerprint
+      # dialog to avoid this case altogether, but this works.
+      read -rp "${ssh_prompt}" response 1>&2 <"${SHH_TTY}"
       printf '%s\n' "${response}"
       ;;
 

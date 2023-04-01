@@ -14,9 +14,14 @@ help() {
 }
 
 main() {
+    # Helps in child processes that no longer have the current TTY as stdin
+    SHH_TTY="$(tty)"
+    export SHH_TTY
+
     SSH_ASKPASS="$(dirname "$0")/shh-askpass"
     export SSH_ASKPASS
     export SSH_ASKPASS_REQUIRE='force'
+
 
     while getopts ":d:h" option; do
       case "${option}" in
