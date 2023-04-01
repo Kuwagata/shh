@@ -8,7 +8,7 @@ set -o pipefail
 readonly pass_dir="${SHH_PASS_DIR:-SSH}"
 
 debug() {
-  if [[ -n ${SSH_PASS_DEBUG} ]] ; then
+  if [[ -n ${SHH_DEBUG} ]] ; then
     printf '\e[1;32m[%s]:\e[0m %s\n' "$(date +'%Y-%m-%dT%H:%M:%S%z')" "$*"
   fi
 }
@@ -194,7 +194,7 @@ main() {
     if [[ -z ${new_passphrase_opt} ]] ; then
       debug 'Generating a new password.'
       # This is ripped right out of `pass`
-      read -r -n "${PASS_SSH_PASSPHRASE_LENGTH:-32}" new_pass < \
+      read -r -n "${SHH_PASS_LENGTH:-32}" new_pass < \
         <(LC_ALL=C tr -dc "[:punct:][:alnum:]" < /dev/urandom)
     else
       debug 'Using supplied new passphrase.'
