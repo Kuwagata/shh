@@ -21,11 +21,9 @@ Identity added: ../.ssh/id_ed25519
 
 ## Why use this??
 
-These scripts make it easy to manage one or more keys without having to rely on an agent to assist with juggling multiple, unique encryption passphrases.
-
-Avoiding the agent also means keys are not spending too much time decrypted in memory.
-
-There are alternatives, including some that integrate closer with desktop environments like KDE or Gnome, but this project aims to be less environment-specific. It also provides integration with `ssh-keygen` which seems to be missing in many other password stores or agent alternatives.
+It's easy to manage one or more keys without having to rely on an agent.
+ 
+It's desktop-environment-agnostic.
 
 ## On the topic of multiple keys
 
